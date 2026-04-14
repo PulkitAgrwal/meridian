@@ -138,6 +138,7 @@ jobs:
             --max-instances=5 \
             --memory=1Gi \
             --cpu=1 \
+            --no-cpu-throttling \
             --timeout=300 \
             --command="python","-m","uvicorn","agents.orchestrator.server:app","--host","0.0.0.0","--port","8080" \
             --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL},SENTINEL_URL=${SENTINEL_URL},ANALYST_URL=${ANALYST_URL},OPTIMIZER_URL=${OPTIMIZER_URL},COMMUNICATOR_URL=${COMMUNICATOR_URL}" \

@@ -27,7 +27,7 @@ from shared.logger import log as struct_log
 # In production, this would be Firestore with real-time listeners
 _vessel_store: dict[str, dict] = {}
 _last_update: Optional[datetime] = None
-_ais_mode: str = "initializing"  # "live", "synthetic", or "initializing"
+_ais_mode: str = "synthetic"  # "live" or "synthetic"
 
 
 # Bounding boxes for monitored corridors
