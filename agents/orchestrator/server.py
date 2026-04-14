@@ -457,11 +457,20 @@ def build_app():
         allow_headers=["*"],
     )
 
-    # Start AIS stream on server startup
-    @a2a_app.on_event("startup")
-    async def _startup():
-        struct_log("orchestrator", "INFO", "Starting AIS stream background task...")
-        asyncio.create_task(start_ais_stream())
+    # Start AIS stream on first request (on_event("startup") doesn't fire with to_a2a)
+    _ais_started = {"done": False}
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class AISStartMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            if not _ais_started["done"]:
+                _ais_started["done"] = True
+                struct_log("orchestrator", "INFO", "Starting AIS stream background task (first request trigger)...")
+                asyncio.create_task(start_ais_stream())
+            return await call_next(request)
+
+    a2a_app.add_middleware(AISStartMiddleware)
 
     return a2a_app
 
