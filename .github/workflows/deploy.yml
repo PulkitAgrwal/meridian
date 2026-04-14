@@ -1,0 +1,338 @@
+name: Deploy ChainSight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: chainsight-40326
+  REGION: asia-south1
+  REPO: chainsight
+  GEMINI_MODEL: gemini-2.0-flash
+
+jobs:
+  # ════════════════════════════════════════════════════════════
+  #  Build and push all 5 agent Docker images
+  # ════════════════════════════════════════════════════════════
+  build-images:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_base: ${{ steps.vars.outputs.image_base }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          gcloud artifacts repositories describe $REPO \
+            --location=$REGION 2>/dev/null || \
+          gcloud artifacts repositories create $REPO \
+            --repository-format=docker \
+            --location=$REGION \
+            --description="ChainSight agent images"
+
+      - id: vars
+        name: Set image base path
+        run: echo "image_base=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push all agent images
+        run: |
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
+          for agent in sentinel analyst optimizer communicator orchestrator; do
+            IMAGE="${IMAGE_BASE}/chainsight-${agent}:${{ github.sha }}"
+            IMAGE_LATEST="${IMAGE_BASE}/chainsight-${agent}:latest"
+            echo "::group::Build chainsight-${agent}"
+            docker build -t "$IMAGE" -t "$IMAGE_LATEST" -f "Dockerfile.${agent}" .
+            docker push "$IMAGE"
+            docker push "$IMAGE_LATEST"
+            echo "::endgroup::"
+          done
+
+  # ════════════════════════════════════════════════════════════
+  #  Deploy 4 specialist agents to Cloud Run
+  # ════════════════════════════════════════════════════════════
+  deploy-specialists:
+    name: Deploy specialist agents
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      sentinel_url: ${{ steps.deploy.outputs.sentinel_url }}
+      analyst_url: ${{ steps.deploy.outputs.analyst_url }}
+      optimizer_url: ${{ steps.deploy.outputs.optimizer_url }}
+      communicator_url: ${{ steps.deploy.outputs.communicator_url }}
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - id: deploy
+        name: Deploy sentinel, analyst, optimizer, communicator
+        run: |
+          IMAGE_BASE="${{ needs.build-images.outputs.image_base }}"
+
+          for agent in sentinel analyst optimizer communicator; do
+            SERVICE="chainsight-${agent}"
+            IMAGE="${IMAGE_BASE}/chainsight-${agent}:${{ github.sha }}"
+
+            echo "::group::Deploy ${SERVICE}"
+            gcloud run deploy "$SERVICE" \
+              --image "$IMAGE" \
+              --region $REGION \
+              --platform managed \
+              --allow-unauthenticated \
+              --min-instances=0 \
+              --max-instances=3 \
+              --memory=512Mi \
+              --cpu=1 \
+              --timeout=300 \
+              --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL}" \
+              --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,AISSTREAM_API_KEY=AISSTREAM_API_KEY:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest" \
+              --quiet
+
+            URL=$(gcloud run services describe "$SERVICE" --region $REGION --format='value(status.url)')
+            echo "${agent}_url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "${SERVICE}: ${URL}"
+            echo "::endgroup::"
+          done
+
+  # ════════════════════════════════════════════════════════════
+  #  Deploy orchestrator with auto-discovered specialist URLs
+  # ════════════════════════════════════════════════════════════
+  deploy-orchestrator:
+    name: Deploy orchestrator
+    needs: [build-images, deploy-specialists]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      orchestrator_url: ${{ steps.deploy.outputs.orchestrator_url }}
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - id: deploy
+        name: Deploy orchestrator with specialist URLs
+        env:
+          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
+          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+        run: |
+          IMAGE="${{ needs.build-images.outputs.image_base }}/chainsight-orchestrator:${{ github.sha }}"
+
+          gcloud run deploy chainsight-orchestrator \
+            --image "$IMAGE" \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=5 \
+            --memory=1Gi \
+            --cpu=1 \
+            --timeout=300 \
+            --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL},SENTINEL_URL=${SENTINEL_URL},ANALYST_URL=${ANALYST_URL},OPTIMIZER_URL=${OPTIMIZER_URL},COMMUNICATOR_URL=${COMMUNICATOR_URL}" \
+            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,AISSTREAM_API_KEY=AISSTREAM_API_KEY:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest" \
+            --quiet
+
+          URL=$(gcloud run services describe chainsight-orchestrator --region $REGION --format='value(status.url)')
+          echo "orchestrator_url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Orchestrator: ${URL}"
+
+  # ════════════════════════════════════════════════════════════
+  #  Build frontend with real orchestrator URL, deploy to Firebase
+  # ════════════════════════════════════════════════════════════
+  deploy-frontend:
+    name: Deploy frontend
+    needs: deploy-orchestrator
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      hosting_url: ${{ steps.urls.outputs.hosting_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Write .env.production with real orchestrator URL
+        env:
+          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
+        run: |
+          cat > frontend/.env.production <<EOF
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEXT_PUBLIC_ORCHESTRATOR_URL=${ORCHESTRATOR_URL}
+          EOF
+          echo "Frontend will connect to: ${ORCHESTRATOR_URL}"
+
+      - name: Install and build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
+          channelId: live
+          projectId: ${{ env.PROJECT_ID }}
+
+      - id: urls
+        run: echo "hosting_url=https://${PROJECT_ID}.web.app" >> "$GITHUB_OUTPUT"
+
+  # ════════════════════════════════════════════════════════════
+  #  Health checks — verify the full deployment
+  # ════════════════════════════════════════════════════════════
+  health-check:
+    name: Verify deployment
+    needs: [deploy-specialists, deploy-orchestrator, deploy-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloud Run cold starts
+        run: sleep 10
+
+      - name: Health check — all agents
+        env:
+          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
+          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
+          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+        run: |
+          FAILED=0
+
+          echo "═══════════════════════════════════════════════════════"
+          echo " ChainSight — Post-Deploy Health Checks"
+          echo "═══════════════════════════════════════════════════════"
+          echo ""
+
+          # Check orchestrator /health endpoint
+          echo "--- Orchestrator /health ---"
+          HEALTH=$(curl -sf --max-time 20 "${ORCHESTRATOR_URL}/health" 2>&1) && {
+            echo "$HEALTH" | python3 -m json.tool
+            echo "PASS: orchestrator healthy"
+          } || {
+            echo "FAIL: orchestrator health check failed"
+            FAILED=$((FAILED + 1))
+          }
+          echo ""
+
+          # Check specialist agent cards
+          for agent in sentinel analyst optimizer communicator; do
+            URL_VAR="${agent^^}_URL"  # uppercase
+            URL="${!URL_VAR}"
+            echo "--- ${agent} /.well-known/agent.json ---"
+            curl -sf --max-time 15 "${URL}/.well-known/agent.json" > /dev/null 2>&1 && {
+              echo "PASS: ${agent} agent card reachable"
+            } || {
+              echo "FAIL: ${agent} agent card unreachable at ${URL}"
+              FAILED=$((FAILED + 1))
+            }
+          done
+          echo ""
+
+          # Check REST API endpoints
+          echo "--- Orchestrator API endpoints ---"
+          for endpoint in /api/v1/corridors /api/v1/vessels/stats /api/v1/disruptions; do
+            STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 15 "${ORCHESTRATOR_URL}${endpoint}" 2>&1) && {
+              echo "PASS: ${endpoint} -> HTTP ${STATUS}"
+            } || {
+              echo "FAIL: ${endpoint} unreachable"
+              FAILED=$((FAILED + 1))
+            }
+          done
+          echo ""
+
+          # Check frontend is live
+          echo "--- Frontend ---"
+          HOSTING_URL="https://${{ env.PROJECT_ID }}.web.app"
+          STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 10 "${HOSTING_URL}" 2>&1)
+          if [ "$STATUS" = "200" ]; then
+            echo "PASS: Frontend live at ${HOSTING_URL}"
+          else
+            echo "FAIL: Frontend returned HTTP ${STATUS}"
+            FAILED=$((FAILED + 1))
+          fi
+          echo ""
+
+          echo "═══════════════════════════════════════════════════════"
+          if [ "$FAILED" -gt 0 ]; then
+            echo " RESULT: ${FAILED} check(s) FAILED"
+            echo "═══════════════════════════════════════════════════════"
+            exit 1
+          else
+            echo " RESULT: All health checks PASSED"
+            echo "═══════════════════════════════════════════════════════"
+          fi
+
+      - name: Print deployment summary
+        if: always()
+        env:
+          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
+          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
+          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+        run: |
+          echo ""
+          echo "═══════════════════════════════════════════════════════"
+          echo " DEPLOYMENT SUMMARY"
+          echo "═══════════════════════════════════════════════════════"
+          echo ""
+          echo " Cloud Run Services:"
+          echo "   Sentinel:     ${SENTINEL_URL}"
+          echo "   Analyst:      ${ANALYST_URL}"
+          echo "   Optimizer:    ${OPTIMIZER_URL}"
+          echo "   Communicator: ${COMMUNICATOR_URL}"
+          echo "   Orchestrator: ${ORCHESTRATOR_URL}"
+          echo ""
+          echo " Frontend:"
+          echo "   https://${{ env.PROJECT_ID }}.web.app"
+          echo ""
+          echo " API Endpoints:"
+          echo "   POST ${ORCHESTRATOR_URL}/api/v1/query"
+          echo "   GET  ${ORCHESTRATOR_URL}/api/v1/disruptions"
+          echo "   GET  ${ORCHESTRATOR_URL}/api/v1/corridors"
+          echo "   GET  ${ORCHESTRATOR_URL}/health"
+          echo ""
+          echo "═══════════════════════════════════════════════════════"
