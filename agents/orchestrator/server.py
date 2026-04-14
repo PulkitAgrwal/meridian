@@ -31,7 +31,7 @@ from agents.orchestrator.agent import root_agent
 from shared.config import Config
 from shared.reasoning_log import get_log, format_log_as_text, clear_log, log_step
 from shared.logger import log as struct_log, request_timer
-from tools.ais_stream import start_ais_stream, get_vessel_count, get_all_vessels, get_last_update
+from tools.ais_stream import start_ais_stream, get_vessel_count, get_all_vessels, get_last_update, get_ais_mode
 from tools.port_congestion import scan_all_ports, get_port_congestion, MONITORED_PORTS
 
 
@@ -380,7 +380,7 @@ async def api_corridors(request: Request) -> JSONResponse:
 
     return JSONResponse({
         "corridors": enriched,
-        "source": "live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else "synthetic",
+        "source": get_ais_mode(),
     })
 
 
@@ -395,7 +395,7 @@ async def api_vessel_stats(request: Request) -> JSONResponse:
 
     return JSONResponse({
         "total_tracked": len(vessels),
-        "source": "aisstream_live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else "synthetic",
+        "source": get_ais_mode(),
         "last_update": get_last_update().isoformat() if get_last_update() else None,
         "by_corridor": {
             "asia-europe": by_corridor.get("asia-europe", 0),
@@ -414,7 +414,7 @@ async def health(request: Request) -> JSONResponse:
         "port": Config.ORCHESTRATOR_PORT,
         "active_events": len(_disruption_events),
         "vessel_count": get_vessel_count(),
-        "ais_source": "live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else ("synthetic" if get_vessel_count() > 0 else "initializing"),
+        "ais_source": get_ais_mode(),
         "ais_last_update": get_last_update().isoformat() if get_last_update() else None,
         "model": Config.GEMINI_MODEL,
         "timestamp": datetime.now(timezone.utc).isoformat(),

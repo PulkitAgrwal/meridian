@@ -27,6 +27,7 @@ from shared.logger import log as struct_log
 # In production, this would be Firestore with real-time listeners
 _vessel_store: dict[str, dict] = {}
 _last_update: Optional[datetime] = None
+_ais_mode: str = "initializing"  # "live", "synthetic", or "initializing"
 
 
 # Bounding boxes for monitored corridors
@@ -62,21 +63,31 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 async def start_ais_stream():
-    """Connect to AISStream.io and start receiving vessel positions.
-    
-    This runs as a long-lived async task. It automatically reconnects
-    on disconnection with exponential backoff.
+    """Start vessel tracking: synthetic data immediately, live AIS in background.
+
+    Always starts synthetic scenario first so vessel data is available
+    instantly on Cloud Run cold starts. Then attempts live AIS connection
+    in the background — if it succeeds, live data overrides synthetic.
     """
+    global _ais_mode
+
+    # Start synthetic scenario immediately so we always have vessel data
+    _ais_mode = "synthetic"
+    log_step("AIS_Client", "synthetic_start", "Starting synthetic scenario for immediate vessel data")
+    synthetic_task = asyncio.create_task(_run_synthetic_scenario())
+
+    # If AIS API key is set, try to upgrade to live data
+    api_key = Config.AISSTREAM_API_KEY
+    if not api_key:
+        struct_log("ais_client", "INFO", "No AISSTREAM_API_KEY. Running synthetic scenario only.")
+        await synthetic_task  # Keep running synthetic forever
+        return
+
     try:
         import websockets
     except ImportError:
-        struct_log("ais_client", "WARN", "websockets not installed. Install with: pip install websockets")
-        return
-
-    api_key = Config.AISSTREAM_API_KEY
-    if not api_key:
-        struct_log("ais_client", "WARN", "AISSTREAM_API_KEY not set. Using synthetic scenario mode.")
-        await _run_synthetic_scenario()
+        struct_log("ais_client", "WARN", "websockets not installed, staying in synthetic mode")
+        await synthetic_task
         return
 
     url = "wss://stream.aisstream.io/v0/stream"
@@ -87,13 +98,13 @@ async def start_ais_stream():
         all_bounds.extend(corridor_bounds)
 
     subscription = {
-        "APIKey": api_key,  # Capital K per AISStream docs
+        "APIKey": api_key,
         "BoundingBoxes": all_bounds,
         "FilterMessageTypes": ["PositionReport"],
     }
 
-    LIVE_TIMEOUT = 10  # seconds to wait for first message before falling back
-    MAX_RETRIES = 2    # retry live connection this many times before synthetic fallback
+    LIVE_TIMEOUT = 10
+    MAX_RETRIES = 2
     retries = 0
     retry_delay = 1
 
@@ -105,21 +116,23 @@ async def start_ais_stream():
 
                 await ws.send(json.dumps(subscription))
 
-                # Wait for the first message with a timeout
                 got_first = False
                 try:
                     first_raw = await asyncio.wait_for(ws.recv(), timeout=LIVE_TIMEOUT)
                     data = json.loads(first_raw)
                     _process_ais_message(data)
                     got_first = True
-                    log_step("AIS_Client", "live_data", f"Receiving live AIS data (first message received)")
+                    # Live data working — cancel synthetic and switch mode
+                    synthetic_task.cancel()
+                    _ais_mode = "live"
+                    log_step("AIS_Client", "live_data", "Switched to live AIS data (synthetic cancelled)")
                 except asyncio.TimeoutError:
-                    log_step("AIS_Client", "timeout", f"No data in {LIVE_TIMEOUT}s — AISStream may be down (attempt {retries + 1}/{MAX_RETRIES})")
+                    log_step("AIS_Client", "timeout", f"No data in {LIVE_TIMEOUT}s (attempt {retries + 1}/{MAX_RETRIES})")
                     retries += 1
                     continue
 
                 if got_first:
-                    retries = 0  # Reset on success
+                    retries = 0
                     async for message in ws:
                         try:
                             data = json.loads(message)
@@ -133,10 +146,10 @@ async def start_ais_stream():
             retry_delay = min(retry_delay * 2, 30)
             retries += 1
 
-    # Exhausted retries — fall back to synthetic scenario
-    log_step("AIS_Client", "fallback", f"Live AIS unavailable after {MAX_RETRIES} attempts. Falling back to synthetic scenario mode.")
-    struct_log("ais_client", "WARN", "AISStream.io not delivering data — using synthetic scenario mode")
-    await _run_synthetic_scenario()
+    # Live didn't work — synthetic is already running, just log and let it continue
+    log_step("AIS_Client", "staying_synthetic", f"Live AIS unavailable after {MAX_RETRIES} attempts. Continuing with synthetic scenario.")
+    struct_log("ais_client", "INFO", "AISStream.io not delivering data — synthetic scenario continues")
+    await synthetic_task
 
 
 def _process_ais_message(data: dict):
@@ -442,6 +455,11 @@ def get_all_vessels() -> list[dict]:
 def get_vessel_count() -> int:
     """Get total number of tracked vessels."""
     return len(_vessel_store)
+
+
+def get_ais_mode() -> str:
+    """Get current AIS data source mode: 'live', 'synthetic', or 'initializing'."""
+    return _ais_mode
 
 
 def get_last_update():
