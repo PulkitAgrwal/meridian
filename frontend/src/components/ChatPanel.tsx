@@ -4,13 +4,62 @@ import { useCallback, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { CHAT_FALLBACK_ANSWERS } from "@/lib/demo-data";
 
-/** Minimal markdown → HTML for chat: **bold**, \n, and lists */
+/** Minimal markdown → HTML for chat: **bold**, \n, tables, and lists */
 function renderMarkdown(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br/>");
+  // Split into lines and detect table blocks
+  const lines = text.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    // Detect markdown table: line with pipes, followed by separator (---|---), followed by more piped lines
+    if (
+      lines[i].includes("|") &&
+      i + 1 < lines.length &&
+      /^\|?[\s-]+\|[\s-|]+\|?$/.test(lines[i + 1])
+    ) {
+      // Parse header row
+      const headerCells = lines[i].split("|").map(c => c.trim()).filter(Boolean);
+      i += 2; // skip header + separator
+
+      // Parse body rows
+      const bodyRows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|")) {
+        const cells = lines[i].split("|").map(c => c.trim()).filter(Boolean);
+        if (cells.length > 0) bodyRows.push(cells);
+        i++;
+      }
+
+      // Build HTML table
+      let table = '<table style="width:100%;border-collapse:collapse;margin:6px 0;font-size:12px">';
+      table += "<thead><tr>";
+      for (const h of headerCells) {
+        const escaped = h.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        table += `<th style="border-bottom:1px solid var(--border);padding:4px 8px;text-align:left;font-weight:600">${escaped}</th>`;
+      }
+      table += "</tr></thead><tbody>";
+      for (const row of bodyRows) {
+        table += "<tr>";
+        for (const cell of row) {
+          const escaped = cell.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+          table += `<td style="border-bottom:1px solid var(--border);padding:3px 8px">${escaped}</td>`;
+        }
+        table += "</tr>";
+      }
+      table += "</tbody></table>";
+      result.push(table);
+    } else {
+      // Regular line
+      const escaped = lines[i]
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      result.push(escaped);
+      i++;
+    }
+  }
+
+  return result.join("<br/>");
 }
 
 interface Props {

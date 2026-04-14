@@ -46,7 +46,7 @@ test.describe('Meridian Live Site E2E', () => {
   });
 
   test('Run Typhoon Demo - full flow', async ({ page }) => {
-    const demoBtn = page.locator('button', { hasText: /Run.*Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Run.*Scenario|Run.*Demo/i }).first();
     await expect(demoBtn).toBeVisible();
     await demoBtn.click();
 
@@ -85,7 +85,7 @@ test.describe('Meridian Live Site E2E', () => {
   });
 
   test('CRITICAL alert banner appears during demo', async ({ page }) => {
-    const demoBtn = page.locator('button', { hasText: /Run.*Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Run.*Scenario|Run.*Demo/i }).first();
     await demoBtn.click();
 
     await page.waitForTimeout(15000);
@@ -97,7 +97,7 @@ test.describe('Meridian Live Site E2E', () => {
   });
 
   test('Download PDF Report button exists and works', async ({ page }) => {
-    const demoBtn = page.locator('button', { hasText: /Run.*Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Run.*Scenario|Run.*Demo/i }).first();
     await demoBtn.click();
     await page.waitForTimeout(18000);
 

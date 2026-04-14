@@ -27,8 +27,8 @@ test.describe('Meridian Demo Flow', () => {
     await expect(page.locator('.gm-style, [data-testid="map-loading"]')).toBeVisible({ timeout: 15000 });
   });
 
-  test('Run Typhoon Demo button starts demo pipeline', async ({ page }) => {
-    const runButton = page.getByRole('button', { name: /Run Typhoon Demo/i });
+  test('Run Typhoon Scenario button starts demo pipeline', async ({ page }) => {
+    const runButton = page.getByRole('button', { name: /Run Typhoon Scenario/i });
     await expect(runButton).toBeVisible();
     await expect(runButton).toBeEnabled();
 
@@ -39,7 +39,7 @@ test.describe('Meridian Demo Flow', () => {
   });
 
   test('reasoning panel populates with steps during demo', async ({ page }) => {
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
 
     await page.waitForTimeout(5000);
     const steps = page.locator('[data-testid="reasoning-step"]');
@@ -50,7 +50,7 @@ test.describe('Meridian Demo Flow', () => {
   });
 
   test('route alternatives panel appears during optimization phase', async ({ page }) => {
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
 
     await expect(page.getByText('Lombok Strait bypass').first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('Hold at anchorage').first()).toBeVisible();
@@ -60,21 +60,21 @@ test.describe('Meridian Demo Flow', () => {
   });
 
   test('alert banner appears during communication phase', async ({ page }) => {
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
 
     await expect(page.getByText('CRITICAL').first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('Typhoon Gaemi').first()).toBeVisible();
   });
 
   test('demo completes with all agents showing done status', async ({ page }) => {
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
 
     await expect(page.getByText('done').first()).toBeVisible({ timeout: 25000 });
 
     await page.waitForTimeout(16000);
 
     await expect(page.getByRole('button', { name: /Reset/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Re-run Demo/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Re-run Scenario/i })).toBeVisible();
   });
 
   test('theme toggle works', async ({ page }) => {
@@ -87,17 +87,17 @@ test.describe('Meridian Demo Flow', () => {
   });
 
   test('reset button clears demo state', async ({ page }) => {
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
     await page.waitForTimeout(17000);
 
     await page.getByRole('button', { name: /Reset/i }).click();
-    await expect(page.getByText('Run Typhoon Demo')).toBeVisible();
+    await expect(page.getByText('Run Typhoon Scenario')).toBeVisible();
   });
 
   test('full demo screenshots', async ({ page }) => {
     await page.screenshot({ path: 'e2e/screenshots/01-initial.png', fullPage: true });
 
-    await page.getByRole('button', { name: /Run Typhoon Demo/i }).click();
+    await page.getByRole('button', { name: /Run Typhoon Scenario/i }).click();
 
     await page.waitForTimeout(2000);
     await page.screenshot({ path: 'e2e/screenshots/02-detection.png', fullPage: true });

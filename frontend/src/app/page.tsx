@@ -527,9 +527,11 @@ export default function WarRoom() {
                     <span className="font-mono" style={{ fontSize: "11px", color: "var(--text-primary)" }}>
                       {apiHealth?.ais_source === "live"
                         ? `Live (${apiHealth?.vessel_count ?? 0})`
-                        : apiHealth?.ais_source
-                          ? `Synthetic (${apiHealth?.vessel_count ?? 0})`
-                          : "—"}
+                        : apiHealth?.ais_source === "initializing"
+                          ? "Starting..."
+                          : apiHealth?.ais_source
+                            ? `Synthetic (${apiHealth?.vessel_count ?? 0})`
+                            : "—"}
                     </span>
                   </div>
                 </div>
@@ -706,7 +708,7 @@ export default function WarRoom() {
 
             {/* Floating chat FAB */}
             <FloatingChat
-              apiUrl={settings.apiUrl || undefined}
+              apiUrl={settings.apiUrl || process.env.NEXT_PUBLIC_ORCHESTRATOR_URL || undefined}
               demoComplete={state.currentPhase === "complete"}
               isLiveMode={state.isLiveMode}
             />

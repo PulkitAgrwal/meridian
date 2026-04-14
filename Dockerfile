@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies (single layer, shared by all agents)
 COPY pyproject.toml .
 RUN pip install --no-cache-dir \
     "google-adk[a2a]>=1.30.0" \
@@ -18,19 +18,16 @@ RUN pip install --no-cache-dir \
     "python-dotenv>=1.0.0" \
     "aiohttp>=3.9.0"
 
-# Copy application code
+# Copy ALL application code (shared across all agents)
 COPY shared/ shared/
 COPY tools/ tools/
 COPY data/ data/
-COPY agents/__init__.py agents/__init__.py
-COPY agents/sentinel/ agents/sentinel/
+COPY agents/ agents/
 
 ENV PYTHONPATH=/app
 ENV PORT=8080
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/agent.json')" || exit 1
-
-CMD ["python", "-m", "uvicorn", "agents.sentinel.server:app", "--host", "0.0.0.0", "--port", "8080"]
+# Default: orchestrator. Override per-service via Cloud Run --command flag.
+CMD ["python", "-m", "uvicorn", "agents.orchestrator.server:app", "--host", "0.0.0.0", "--port", "8080"]

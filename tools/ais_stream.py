@@ -35,6 +35,16 @@ CORRIDOR_BOUNDS = {
         [[-10, 95], [15, 120]],   # Malacca Strait + Singapore
         [[-2, 75], [12, 85]],     # Sri Lanka / Colombo
         [[25, 30], [32, 35]],     # Suez Canal
+        [[10, 40], [28, 55]],     # Red Sea + Gulf of Aden
+        [[30, 10], [40, 35]],     # Mediterranean
+        [[45, -8], [55, 12]],     # North Sea / English Channel
+    ],
+    "us-india": [
+        [[30, -80], [42, -60]],   # US East Coast / Atlantic
+        [[32, -15], [40, 10]],    # Mid-Atlantic / Gibraltar
+        [[28, 28], [35, 45]],     # Eastern Mediterranean
+        [[10, 42], [28, 60]],     # Red Sea / Arabian Sea
+        [[12, 60], [22, 75]],     # Arabian Sea → India
     ],
     "intra-india": [
         [[5, 68], [25, 90]],      # Indian coast

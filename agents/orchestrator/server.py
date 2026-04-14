@@ -380,7 +380,7 @@ async def api_corridors(request: Request) -> JSONResponse:
 
     return JSONResponse({
         "corridors": enriched,
-        "source": "live" if get_vessel_count() > 0 else "demo",
+        "source": "live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else "synthetic",
     })
 
 
@@ -395,7 +395,7 @@ async def api_vessel_stats(request: Request) -> JSONResponse:
 
     return JSONResponse({
         "total_tracked": len(vessels),
-        "source": "aisstream_live" if os.getenv("AISSTREAM_API_KEY") else "demo_mode",
+        "source": "aisstream_live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else "synthetic",
         "last_update": get_last_update().isoformat() if get_last_update() else None,
         "by_corridor": {
             "asia-europe": by_corridor.get("asia-europe", 0),
@@ -414,7 +414,7 @@ async def health(request: Request) -> JSONResponse:
         "port": Config.ORCHESTRATOR_PORT,
         "active_events": len(_disruption_events),
         "vessel_count": get_vessel_count(),
-        "ais_source": "live" if os.getenv("AISSTREAM_API_KEY") else "demo",
+        "ais_source": "live" if (os.getenv("AISSTREAM_API_KEY") and get_vessel_count() > 0) else ("synthetic" if get_vessel_count() > 0 else "initializing"),
         "ais_last_update": get_last_update().isoformat() if get_last_update() else None,
         "model": Config.GEMINI_MODEL,
         "timestamp": datetime.now(timezone.utc).isoformat(),

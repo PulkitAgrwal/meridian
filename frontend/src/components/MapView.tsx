@@ -35,7 +35,7 @@ function getMapOptions(isDark: boolean): google.maps.MapOptions {
     styles: isDark ? DARK_MAP_STYLES : LIGHT_MAP_STYLES,
     disableDefaultUI: true,
     zoomControl: true,
-    zoomControlOptions: { position: 9 },
+    zoomControlOptions: { position: 7 },
     backgroundColor: isDark ? "#1a1a2e" : "#f0f0f5",
     minZoom: 2,
     maxZoom: 12,

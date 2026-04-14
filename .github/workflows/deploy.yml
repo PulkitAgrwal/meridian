@@ -17,16 +17,16 @@ env:
 
 jobs:
   # ════════════════════════════════════════════════════════════
-  #  Build and push all 5 agent Docker images
+  #  Build single unified Docker image (all agents share one image)
   # ════════════════════════════════════════════════════════════
-  build-images:
-    name: Build Docker images
+  build-image:
+    name: Build unified image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     outputs:
-      image_base: ${{ steps.vars.outputs.image_base }}
+      image: ${{ steps.vars.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,52 +40,39 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
-      - name: Ensure Artifact Registry repo exists
-        run: |
-          gcloud artifacts repositories describe $REPO \
-            --location=$REGION 2>/dev/null || \
-          gcloud artifacts repositories create $REPO \
-            --repository-format=docker \
-            --location=$REGION \
-            --description="ChainSight agent images"
-
-      - id: vars
-        name: Set image base path
-        run: echo "image_base=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}" >> "$GITHUB_OUTPUT"
-
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push all agent images
+      - id: vars
+        name: Set image tag
+        run: echo "image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/chainsight:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push unified image
         run: |
-          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
-          for agent in sentinel analyst optimizer communicator orchestrator; do
-            IMAGE="${IMAGE_BASE}/chainsight-${agent}"
-            echo "::group::Build chainsight-${agent}"
-            docker buildx build \
-              --cache-from "type=registry,ref=${IMAGE}:buildcache" \
-              --cache-to "type=registry,ref=${IMAGE}:buildcache,mode=max" \
-              --tag "${IMAGE}:${{ github.sha }}" \
-              --tag "${IMAGE}:latest" \
-              --push \
-              -f "Dockerfile.${agent}" .
-            echo "::endgroup::"
-          done
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/chainsight"
+          docker buildx build \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
+            --cache-to "type=registry,ref=${IMAGE}:buildcache,mode=max" \
+            --tag "${IMAGE}:${{ github.sha }}" \
+            --tag "${IMAGE}:latest" \
+            --push \
+            -f Dockerfile .
 
   # ════════════════════════════════════════════════════════════
-  #  Deploy 4 specialist agents to Cloud Run
+  #  Deploy all agents to Cloud Run (specialists parallel, then orchestrator)
   # ════════════════════════════════════════════════════════════
-  deploy-specialists:
-    name: Deploy specialist agents
-    needs: build-images
+  deploy-agents:
+    name: Deploy all agents
+    needs: build-image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     outputs:
-      sentinel_url: ${{ steps.deploy.outputs.sentinel_url }}
-      analyst_url: ${{ steps.deploy.outputs.analyst_url }}
-      optimizer_url: ${{ steps.deploy.outputs.optimizer_url }}
-      communicator_url: ${{ steps.deploy.outputs.communicator_url }}
+      sentinel_url: ${{ steps.specialists.outputs.sentinel_url }}
+      analyst_url: ${{ steps.specialists.outputs.analyst_url }}
+      optimizer_url: ${{ steps.specialists.outputs.optimizer_url }}
+      communicator_url: ${{ steps.specialists.outputs.communicator_url }}
+      orchestrator_url: ${{ steps.orchestrator.outputs.orchestrator_url }}
     steps:
       - id: auth
         uses: google-github-actions/auth@v2
@@ -94,65 +81,53 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - id: deploy
-        name: Deploy sentinel, analyst, optimizer, communicator
+      - id: specialists
+        name: Deploy 4 specialists in parallel
         run: |
-          IMAGE_BASE="${{ needs.build-images.outputs.image_base }}"
+          IMAGE="${{ needs.build-image.outputs.image }}"
+          TMPDIR=$(mktemp -d)
 
           for agent in sentinel analyst optimizer communicator; do
-            SERVICE="chainsight-${agent}"
-            IMAGE="${IMAGE_BASE}/chainsight-${agent}:${{ github.sha }}"
+            (
+              SERVICE="chainsight-${agent}"
 
-            echo "::group::Deploy ${SERVICE}"
-            gcloud run deploy "$SERVICE" \
-              --image "$IMAGE" \
-              --region $REGION \
-              --platform managed \
-              --allow-unauthenticated \
-              --min-instances=0 \
-              --max-instances=3 \
-              --memory=512Mi \
-              --cpu=1 \
-              --timeout=300 \
-              --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL}" \
-              --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,AISSTREAM_API_KEY=AISSTREAM_API_KEY:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest" \
-              --quiet
+              gcloud run deploy "$SERVICE" \
+                --image "$IMAGE" \
+                --region $REGION \
+                --platform managed \
+                --allow-unauthenticated \
+                --min-instances=0 \
+                --max-instances=3 \
+                --memory=512Mi \
+                --cpu=1 \
+                --timeout=300 \
+                --command="python","-m","uvicorn","agents.${agent}.server:app","--host","0.0.0.0","--port","8080" \
+                --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL}" \
+                --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,AISSTREAM_API_KEY=AISSTREAM_API_KEY:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest" \
+                --quiet
 
-            URL=$(gcloud run services describe "$SERVICE" --region $REGION --format='value(status.url)')
-            echo "${agent}_url=${URL}" >> "$GITHUB_OUTPUT"
-            echo "${SERVICE}: ${URL}"
-            echo "::endgroup::"
+              URL=$(gcloud run services describe "$SERVICE" --region $REGION --format='value(status.url)')
+              echo "${agent}_url=${URL}" > "${TMPDIR}/${agent}.out"
+              echo "${SERVICE}: ${URL}"
+            ) &
           done
+          wait
 
-  # ════════════════════════════════════════════════════════════
-  #  Deploy orchestrator with auto-discovered specialist URLs
-  # ════════════════════════════════════════════════════════════
-  deploy-orchestrator:
-    name: Deploy orchestrator
-    needs: [build-images, deploy-specialists]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    outputs:
-      orchestrator_url: ${{ steps.deploy.outputs.orchestrator_url }}
-    steps:
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          # Collect URLs from temp files into GITHUB_OUTPUT
+          for agent in sentinel analyst optimizer communicator; do
+            cat "${TMPDIR}/${agent}.out" >> "$GITHUB_OUTPUT"
+          done
+          rm -rf "$TMPDIR"
 
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - id: deploy
+      - id: orchestrator
         name: Deploy orchestrator with specialist URLs
         env:
-          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
-          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
-          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
-          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+          SENTINEL_URL: ${{ steps.specialists.outputs.sentinel_url }}
+          ANALYST_URL: ${{ steps.specialists.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ steps.specialists.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ steps.specialists.outputs.communicator_url }}
         run: |
-          IMAGE="${{ needs.build-images.outputs.image_base }}/chainsight-orchestrator:${{ github.sha }}"
+          IMAGE="${{ needs.build-image.outputs.image }}"
 
           gcloud run deploy chainsight-orchestrator \
             --image "$IMAGE" \
@@ -164,6 +139,7 @@ jobs:
             --memory=1Gi \
             --cpu=1 \
             --timeout=300 \
+            --command="python","-m","uvicorn","agents.orchestrator.server:app","--host","0.0.0.0","--port","8080" \
             --set-env-vars="GEMINI_MODEL=${GEMINI_MODEL},SENTINEL_URL=${SENTINEL_URL},ANALYST_URL=${ANALYST_URL},OPTIMIZER_URL=${OPTIMIZER_URL},COMMUNICATOR_URL=${COMMUNICATOR_URL}" \
             --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,AISSTREAM_API_KEY=AISSTREAM_API_KEY:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest" \
             --quiet
@@ -177,7 +153,7 @@ jobs:
   # ════════════════════════════════════════════════════════════
   deploy-frontend:
     name: Deploy frontend
-    needs: deploy-orchestrator
+    needs: deploy-agents
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -200,7 +176,7 @@ jobs:
 
       - name: Write .env.production with real orchestrator URL
         env:
-          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
+          ORCHESTRATOR_URL: ${{ needs.deploy-agents.outputs.orchestrator_url }}
         run: |
           cat > frontend/.env.production << 'ENVEOF'
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
@@ -231,7 +207,7 @@ jobs:
   # ════════════════════════════════════════════════════════════
   health-check:
     name: Verify deployment
-    needs: [build-images, deploy-specialists, deploy-orchestrator, deploy-frontend]
+    needs: [build-image, deploy-agents, deploy-frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -249,11 +225,11 @@ jobs:
 
       - name: Health check — all agents
         env:
-          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
-          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
-          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
-          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
-          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+          ORCHESTRATOR_URL: ${{ needs.deploy-agents.outputs.orchestrator_url }}
+          SENTINEL_URL: ${{ needs.deploy-agents.outputs.sentinel_url }}
+          ANALYST_URL: ${{ needs.deploy-agents.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ needs.deploy-agents.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ needs.deploy-agents.outputs.communicator_url }}
         run: |
           FAILED=0
 
@@ -324,11 +300,11 @@ jobs:
       - name: Print deployment summary
         if: always()
         env:
-          ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
-          SENTINEL_URL: ${{ needs.deploy-specialists.outputs.sentinel_url }}
-          ANALYST_URL: ${{ needs.deploy-specialists.outputs.analyst_url }}
-          OPTIMIZER_URL: ${{ needs.deploy-specialists.outputs.optimizer_url }}
-          COMMUNICATOR_URL: ${{ needs.deploy-specialists.outputs.communicator_url }}
+          ORCHESTRATOR_URL: ${{ needs.deploy-agents.outputs.orchestrator_url }}
+          SENTINEL_URL: ${{ needs.deploy-agents.outputs.sentinel_url }}
+          ANALYST_URL: ${{ needs.deploy-agents.outputs.analyst_url }}
+          OPTIMIZER_URL: ${{ needs.deploy-agents.outputs.optimizer_url }}
+          COMMUNICATOR_URL: ${{ needs.deploy-agents.outputs.communicator_url }}
         run: |
           echo ""
           echo "═══════════════════════════════════════════════════════"
@@ -358,19 +334,17 @@ jobs:
         run: |
           KEEP_IMAGES=5
           KEEP_REVISIONS=3
-          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}"
 
+          # Prune old unified images
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/chainsight"
+          DIGESTS=$(gcloud artifacts docker images list "$IMAGE" \
+            --format="value(version)" --sort-by="~UPDATE_TIME" --limit=100 2>/dev/null | tail -n +$((KEEP_IMAGES + 1)))
+          for d in $DIGESTS; do
+            gcloud artifacts docker images delete "${IMAGE}@${d}" --quiet --delete-tags 2>/dev/null || true
+          done
+
+          # Prune old revisions for all services
           for agent in sentinel analyst optimizer communicator orchestrator; do
-            IMAGE="${IMAGE_BASE}/chainsight-${agent}"
-
-            # Prune old images
-            DIGESTS=$(gcloud artifacts docker images list "$IMAGE" \
-              --format="value(version)" --sort-by="~UPDATE_TIME" --limit=100 2>/dev/null | tail -n +$((KEEP_IMAGES + 1)))
-            for d in $DIGESTS; do
-              gcloud artifacts docker images delete "${IMAGE}@${d}" --quiet --delete-tags 2>/dev/null || true
-            done
-
-            # Prune old revisions
             SERVICE="chainsight-${agent}"
             REVS=$(gcloud run revisions list --service="$SERVICE" --region=${{ env.REGION }} \
               --sort-by="~metadata.creationTimestamp" --format="value(metadata.name)" 2>/dev/null | tail -n +$((KEEP_REVISIONS + 1)))

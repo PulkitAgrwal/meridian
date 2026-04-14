@@ -67,7 +67,7 @@ test.describe('Meridian Full UI Audit', () => {
     await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
 
     // Click demo button
-    const demoBtn = page.locator('button', { hasText: /Run.*Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Run.*Scenario|Run.*Demo/i }).first();
     await expect(demoBtn).toBeVisible();
     await demoBtn.click();
 
@@ -167,7 +167,7 @@ test.describe('Meridian Full UI Audit', () => {
   test('mobile — 375px demo flow', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
-    const demoBtn = page.locator('button', { hasText: /Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Scenario|Demo/i }).first();
     if (await demoBtn.isVisible()) {
       await demoBtn.click();
       await page.waitForTimeout(18000);
@@ -190,7 +190,7 @@ test.describe('Meridian Full UI Audit', () => {
     });
 
     await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
-    const demoBtn = page.locator('button', { hasText: /Demo/i }).first();
+    const demoBtn = page.locator('button', { hasText: /Scenario|Demo/i }).first();
     if (await demoBtn.isVisible()) {
       await demoBtn.click();
       await page.waitForTimeout(20000);
