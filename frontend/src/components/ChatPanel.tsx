@@ -15,6 +15,7 @@ function renderMarkdown(text: string): string {
 
 interface Props {
   apiUrl?: string;
+  isLiveMode?: boolean;
 }
 
 const QUICK_CHIPS = [
@@ -33,7 +34,7 @@ function matchFallback(query: string): string {
   return CHAT_FALLBACK_ANSWERS["default"];
 }
 
-export default function ChatPanel({ apiUrl }: Props) {
+export default function ChatPanel({ apiUrl, isLiveMode }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -166,9 +167,9 @@ export default function ChatPanel({ apiUrl }: Props) {
 
       {/* Input */}
       <div className="p-3" style={{ borderTop: "1px solid var(--border)" }}>
-        {!apiUrl && (
+        {!isLiveMode && (
           <div className="mb-1.5 text-center">
-            <span className="font-mono" style={{ fontSize: "10px", color: "var(--text-muted)" }}>Demo mode — responses are pre-computed</span>
+            <span className="font-mono" style={{ fontSize: "10px", color: "var(--text-muted)" }}>Synthetic scenario — responses are pre-computed</span>
           </div>
         )}
         <div className="flex gap-2">

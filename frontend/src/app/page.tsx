@@ -36,7 +36,7 @@ export default function WarRoom() {
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [settings, setSettings] = useState<SettingsState>({ model: "", apiUrl: "", demoSpeed: 1 });
+  const [settings, setSettings] = useState<SettingsState>({ apiUrl: "", demoSpeed: 1 });
   const [toast, setToast] = useState<string | null>(null);
   const [showNotification, setShowNotification] = useState(false);
   const [showHumanitarian, setShowHumanitarian] = useState(false);
@@ -45,7 +45,7 @@ export default function WarRoom() {
   const [liveToggling, setLiveToggling] = useState(false);
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   const [liveCorridorData, setLiveCorridorData] = useState<Record<string, { active_vessels: number; risk_score: number; status: string }> | null>(null);
-  const [dataSource, setDataSource] = useState<"live" | "demo" | "offline">("offline");
+  const [dataSource, setDataSource] = useState<"live" | "synthetic" | "offline">("offline");
   const [apiHealth, setApiHealth] = useState<{ status: string; vessel_count?: number; ais_source?: string; model?: string } | null>(null);
 
   // Load settings from localStorage
@@ -72,7 +72,7 @@ export default function WarRoom() {
         ]);
         if (corridorsRes?.corridors) {
           setLiveCorridorData(corridorsRes.corridors);
-          setDataSource(corridorsRes.source === "live" ? "live" : "demo");
+          setDataSource(corridorsRes.source === "live" ? "live" : "synthetic");
         }
         if (healthRes) {
           setApiHealth(healthRes);
@@ -125,7 +125,7 @@ export default function WarRoom() {
       // Switch back to DEMO
       setIsLiveMode(false);
       localStorage.setItem("meridian-live-mode", "false");
-      showToast("Switched to Demo mode");
+      showToast("Switched to Scenario mode");
       return;
     }
     // Try to switch to LIVE — test API first
@@ -140,10 +140,10 @@ export default function WarRoom() {
         localStorage.setItem("meridian-live-mode", "true");
         showToast("Switched to Live mode");
       } else {
-        showToast("API unavailable, staying in demo mode");
+        showToast("API unavailable, staying in scenario mode");
       }
     } catch {
-      showToast("API unavailable, staying in demo mode");
+      showToast("API unavailable, staying in scenario mode");
     } finally {
       setLiveToggling(false);
     }
@@ -374,7 +374,7 @@ export default function WarRoom() {
                 {state.isLiveMode && (
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#1D9E75" }} />
                 )}
-                {liveToggling ? "..." : state.isLiveMode ? "LIVE" : "DEMO"}
+                {liveToggling ? "..." : state.isLiveMode ? "LIVE" : "SCENARIO"}
               </button>
             </div>
             <p className="font-mono uppercase" style={{ fontSize: "10px", color: "var(--text-muted)", letterSpacing: "2px" }}>
@@ -419,7 +419,7 @@ export default function WarRoom() {
               cursor: "not-allowed",
             } : undefined}
           >
-            {state.isRunning ? "Running..." : state.currentPhase === "complete" ? "Re-run Demo" : "Run Typhoon Demo"}
+            {state.isRunning ? "Running..." : state.currentPhase === "complete" ? "Re-run Scenario" : "Run Typhoon Scenario"}
           </button>
           {(state.currentPhase === "complete" || state.currentPhase !== "idle") && (
             <button
@@ -514,13 +514,24 @@ export default function WarRoom() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>AIS</span>
-                  <span className="font-mono" style={{ fontSize: "11px", color: "var(--text-primary)" }}>
-                    {apiHealth?.ais_source === "live"
-                      ? `Live (${apiHealth?.vessel_count ?? 0})`
-                      : apiHealth?.ais_source === "demo"
-                        ? `Demo (${apiHealth?.vessel_count ?? 0})`
-                        : "—"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {apiHealth?.ais_source && (
+                      <div
+                        className={`w-1.5 h-1.5 rounded-full ${apiHealth.ais_source === "live" ? "animate-pulse" : ""}`}
+                        style={{ backgroundColor: apiHealth.ais_source === "live" ? "#1D9E75" : "#3B82F6" }}
+                        title={apiHealth.ais_source === "live"
+                          ? "Receiving live AIS vessel data"
+                          : "Running synthetic maritime scenario for demonstration. Connect AISStream.io API key for live vessel data."}
+                      />
+                    )}
+                    <span className="font-mono" style={{ fontSize: "11px", color: "var(--text-primary)" }}>
+                      {apiHealth?.ais_source === "live"
+                        ? `Live (${apiHealth?.vessel_count ?? 0})`
+                        : apiHealth?.ais_source
+                          ? `Synthetic (${apiHealth?.vessel_count ?? 0})`
+                          : "—"}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Last scan</span>
@@ -645,13 +656,15 @@ export default function WarRoom() {
               onDismiss={() => setShowHumanitarian(false)}
             />
 
-            {/* Corridor legend (bottom-left) */}
+            {/* Map legend (bottom-left) */}
             <div
-              className="absolute bottom-4 left-4 z-10 rounded-lg px-3 py-2"
+              className="absolute bottom-4 left-4 z-10 rounded-lg px-3 py-2.5"
               style={{
-                background: isDark ? "rgba(17, 21, 24, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                backdropFilter: "blur(8px)",
+                background: "var(--bg-surface-1)",
                 border: "1px solid var(--border)",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                backdropFilter: "blur(8px)",
+                opacity: 0.95,
               }}
             >
               <div className="font-mono uppercase tracking-wider mb-1.5" style={{ fontSize: "10px", color: "var(--text-muted)" }}>
@@ -663,12 +676,39 @@ export default function WarRoom() {
                   <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>{c.name}</span>
                 </div>
               ))}
+
+              <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />
+
+              <div className="font-mono uppercase tracking-wider mb-1.5" style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                Markers
+              </div>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#E24B4A", opacity: 0.7 }} />
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Disruption zone</span>
+              </div>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#E24B4A", border: "1px solid #E24B4A" }} />
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Affected port</span>
+              </div>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#888" }} />
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Normal port</span>
+              </div>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#4A90D9" }} />
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Tracked vessel</span>
+              </div>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-4 h-0.5 rounded" style={{ backgroundColor: "#EF9F27" }} />
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Alt. route</span>
+              </div>
             </div>
 
             {/* Floating chat FAB */}
             <FloatingChat
               apiUrl={settings.apiUrl || undefined}
               demoComplete={state.currentPhase === "complete"}
+              isLiveMode={state.isLiveMode}
             />
           </div>
 
@@ -725,7 +765,7 @@ export default function WarRoom() {
                 <TimelinePanel events={state.timelineEvents} />
               )}
               {rightTab === "chat" && (
-                <ChatPanel apiUrl={settings.apiUrl || undefined} />
+                <ChatPanel apiUrl={settings.apiUrl || undefined} isLiveMode={state.isLiveMode} />
               )}
             </div>
           </aside>

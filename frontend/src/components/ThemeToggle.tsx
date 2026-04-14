@@ -62,7 +62,8 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={cycle}
-      className="btn-ghost p-2 rounded-lg"
+      className="p-2 rounded-lg transition-colors"
+      style={{ background: "transparent", color: "var(--text-secondary)", border: "none" }}
       aria-label={`Theme: ${theme}. Click to switch.`}
       data-testid="theme-toggle"
       title={`Theme: ${theme}`}

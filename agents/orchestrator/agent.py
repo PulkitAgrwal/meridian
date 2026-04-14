@@ -11,6 +11,7 @@ This is the entry point for both:
 
 from google.adk.agents import Agent
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from google.adk.tools.google_search_tool import google_search
 from shared.config import Config
 
 
@@ -73,13 +74,17 @@ When a user asks a question:
 - "What's the risk on [corridor]?" → Route to analyst (or sentinel if no recent data)
 - "Show me alternatives for [corridor]" → Route to optimizer  
 - "Generate a report" → Route to communicator
-- General questions → Answer directly using your knowledge
+- Questions about current news, weather, or real-world events → Use **google_search** tool to get live information, then answer
+- General knowledge questions (math, facts, definitions) → Answer directly using your knowledge and validate the answer with **google_search** tool
+- Questions mixing supply chain context with general info → Use google_search first, then combine with agent data
 
 ## Key Principles
 - Always route through the FULL pipeline for new disruption events (sentinel → analyst → optimizer → communicator)
 - For follow-up questions, route to the specific relevant agent
 - ALWAYS pass the full context between agents — each agent needs the output of the previous one
 - Be transparent about which agent you're delegating to and why
+- Use google_search for any question that needs real-time or up-to-date information
 """,
+    tools=[google_search],
     sub_agents=[sentinel, analyst, optimizer, communicator],
 )

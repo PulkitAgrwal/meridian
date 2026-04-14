@@ -53,16 +53,21 @@ jobs:
         name: Set image base path
         run: echo "image_base=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}" >> "$GITHUB_OUTPUT"
 
+      - uses: docker/setup-buildx-action@v3
+
       - name: Build and push all agent images
         run: |
           IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
           for agent in sentinel analyst optimizer communicator orchestrator; do
-            IMAGE="${IMAGE_BASE}/chainsight-${agent}:${{ github.sha }}"
-            IMAGE_LATEST="${IMAGE_BASE}/chainsight-${agent}:latest"
+            IMAGE="${IMAGE_BASE}/chainsight-${agent}"
             echo "::group::Build chainsight-${agent}"
-            docker build -t "$IMAGE" -t "$IMAGE_LATEST" -f "Dockerfile.${agent}" .
-            docker push "$IMAGE"
-            docker push "$IMAGE_LATEST"
+            docker buildx build \
+              --cache-from "type=registry,ref=${IMAGE}:buildcache" \
+              --cache-to "type=registry,ref=${IMAGE}:buildcache,mode=max" \
+              --tag "${IMAGE}:${{ github.sha }}" \
+              --tag "${IMAGE}:latest" \
+              --push \
+              -f "Dockerfile.${agent}" .
             echo "::endgroup::"
           done
 
@@ -226,9 +231,19 @@ jobs:
   # ════════════════════════════════════════════════════════════
   health-check:
     name: Verify deployment
-    needs: [deploy-specialists, deploy-orchestrator, deploy-frontend]
+    needs: [build-images, deploy-specialists, deploy-orchestrator, deploy-frontend]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
       - name: Wait for Cloud Run cold starts
         run: sleep 10
 
@@ -338,104 +353,28 @@ jobs:
           echo ""
           echo "═══════════════════════════════════════════════════════"
 
-  # ════════════════════════════════════════════════════════════
-  #  Post-deploy cleanup — prune old images and revisions
-  # ════════════════════════════════════════════════════════════
-  cleanup:
-    name: Cleanup old artifacts
-    needs: [health-check, build-images]
-    if: always() && needs.health-check.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Prune old Artifact Registry images (keep last 5)
+      - name: Cleanup old images and revisions
+        if: success()
         run: |
-          IMAGE_BASE="${{ needs.build-images.outputs.image_base }}"
-          KEEP=5
-
-          echo "═══════════════════════════════════════════════════════"
-          echo " Cleanup — Pruning old container images"
-          echo " Keeping last ${KEEP} per agent"
-          echo "═══════════════════════════════════════════════════════"
-          echo ""
+          KEEP_IMAGES=5
+          KEEP_REVISIONS=3
+          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}"
 
           for agent in sentinel analyst optimizer communicator orchestrator; do
-            IMAGE="chainsight-${agent}"
-            echo "--- ${IMAGE} ---"
+            IMAGE="${IMAGE_BASE}/chainsight-${agent}"
 
-            # List digests sorted by upload time (oldest first), skip the latest $KEEP
-            DIGESTS=$(gcloud artifacts docker images list \
-              "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}" \
-              --format="value(version)" \
-              --sort-by="~UPDATE_TIME" \
-              --limit=100 2>/dev/null | tail -n +$((KEEP + 1)))
+            # Prune old images
+            DIGESTS=$(gcloud artifacts docker images list "$IMAGE" \
+              --format="value(version)" --sort-by="~UPDATE_TIME" --limit=100 2>/dev/null | tail -n +$((KEEP_IMAGES + 1)))
+            for d in $DIGESTS; do
+              gcloud artifacts docker images delete "${IMAGE}@${d}" --quiet --delete-tags 2>/dev/null || true
+            done
 
-            if [ -z "$DIGESTS" ]; then
-              echo "  Nothing to prune"
-              continue
-            fi
-
-            COUNT=0
-            while IFS= read -r digest; do
-              gcloud artifacts docker images delete \
-                "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}@${digest}" \
-                --quiet --delete-tags 2>/dev/null && COUNT=$((COUNT + 1))
-            done <<< "$DIGESTS"
-            echo "  Pruned ${COUNT} old image(s)"
-          done
-          echo ""
-
-      - name: Delete old Cloud Run revisions (keep last 3)
-        run: |
-          KEEP=3
-
-          echo "═══════════════════════════════════════════════════════"
-          echo " Cleanup — Pruning old Cloud Run revisions"
-          echo " Keeping last ${KEEP} per service"
-          echo "═══════════════════════════════════════════════════════"
-          echo ""
-
-          for agent in sentinel analyst optimizer communicator orchestrator; do
+            # Prune old revisions
             SERVICE="chainsight-${agent}"
-            echo "--- ${SERVICE} ---"
-
-            # Get revisions currently serving traffic (never delete these)
-            ACTIVE=$(gcloud run revisions list \
-              --service="$SERVICE" \
-              --region=$REGION \
-              --filter="status.conditions.type=Active AND status.conditions.status=True" \
-              --format="value(metadata.name)" 2>/dev/null)
-
-            ALL_REVISIONS=$(gcloud run revisions list \
-              --service="$SERVICE" \
-              --region=$REGION \
-              --sort-by="~metadata.creationTimestamp" \
-              --format="value(metadata.name)" 2>/dev/null)
-
-            COUNT=0
-            IDX=0
-            while IFS= read -r rev; do
-              [ -z "$rev" ] && continue
-              IDX=$((IDX + 1))
-              # Skip the newest $KEEP revisions
-              [ "$IDX" -le "$KEEP" ] && continue
-              # Never delete active revisions
-              echo "$ACTIVE" | grep -q "^${rev}$" && continue
-              gcloud run revisions delete "$rev" \
-                --region=$REGION --quiet 2>/dev/null && COUNT=$((COUNT + 1))
-            done <<< "$ALL_REVISIONS"
-            echo "  Pruned ${COUNT} old revision(s)"
+            REVS=$(gcloud run revisions list --service="$SERVICE" --region=${{ env.REGION }} \
+              --sort-by="~metadata.creationTimestamp" --format="value(metadata.name)" 2>/dev/null | tail -n +$((KEEP_REVISIONS + 1)))
+            for rev in $REVS; do
+              gcloud run revisions delete "$rev" --region=${{ env.REGION }} --quiet 2>/dev/null || true
+            done
           done
-          echo ""
-          echo "═══════════════════════════════════════════════════════"
-          echo " Cleanup complete"
-          echo "═══════════════════════════════════════════════════════"

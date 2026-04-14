@@ -6,9 +6,10 @@ import ChatPanel from "./ChatPanel";
 interface Props {
   apiUrl?: string;
   demoComplete?: boolean;
+  isLiveMode?: boolean;
 }
 
-export default function FloatingChat({ apiUrl, demoComplete }: Props) {
+export default function FloatingChat({ apiUrl, demoComplete, isLiveMode }: Props) {
   const [open, setOpen] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [bounce, setBounce] = useState(false);
@@ -49,7 +50,7 @@ export default function FloatingChat({ apiUrl, demoComplete }: Props) {
             onClick={() => setOpen(false)}
           />
           <div
-            className="fixed z-50 md:absolute md:bottom-20 md:right-4 inset-0 md:inset-auto flex flex-col animate-slide-in"
+            className="fixed z-50 md:absolute md:bottom-36 md:right-4 inset-0 md:inset-auto flex flex-col animate-slide-in"
             style={{
               width: "100%",
               height: "100%",
@@ -91,7 +92,7 @@ export default function FloatingChat({ apiUrl, demoComplete }: Props) {
               </div>
               {/* Chat content */}
               <div className="flex-1 overflow-hidden">
-                <ChatPanel apiUrl={apiUrl} />
+                <ChatPanel apiUrl={apiUrl} isLiveMode={isLiveMode} />
               </div>
             </div>
           </div>
@@ -101,7 +102,7 @@ export default function FloatingChat({ apiUrl, demoComplete }: Props) {
       {/* Tooltip */}
       {showTooltip && !open && (
         <div
-          className="absolute bottom-20 right-4 z-30 rounded-lg px-3 py-2 animate-slide-in pointer-events-none"
+          className="absolute bottom-36 right-4 z-30 rounded-lg px-3 py-2 animate-slide-in pointer-events-none"
           style={{
             background: "var(--bg-surface-1)",
             border: "1px solid var(--border)",
@@ -118,7 +119,7 @@ export default function FloatingChat({ apiUrl, demoComplete }: Props) {
       {/* FAB */}
       <button
         onClick={() => { setOpen((p) => !p); setShowTooltip(false); }}
-        className={`absolute bottom-4 right-4 z-30 flex items-center justify-center rounded-full shadow-lg transition-transform ${bounce ? "animate-bounce" : ""}`}
+        className={`absolute bottom-20 right-4 z-30 flex items-center justify-center rounded-full shadow-lg transition-transform ${bounce ? "animate-bounce" : ""}`}
         style={{
           width: "56px",
           height: "56px",

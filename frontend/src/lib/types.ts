@@ -113,7 +113,6 @@ export interface DemoState {
 }
 
 export interface SettingsState {
-  model: string;
   apiUrl: string;
   demoSpeed: number;
 }
