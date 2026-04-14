@@ -92,14 +92,14 @@ async def start_ais_stream():
         "FilterMessageTypes": ["PositionReport"],
     }
 
-    LIVE_TIMEOUT = 30  # seconds to wait for first message before falling back
-    MAX_RETRIES = 3    # retry live connection this many times before demo fallback
+    LIVE_TIMEOUT = 10  # seconds to wait for first message before falling back
+    MAX_RETRIES = 2    # retry live connection this many times before synthetic fallback
     retries = 0
     retry_delay = 1
 
     while retries < MAX_RETRIES:
         try:
-            async with websockets.connect(url, open_timeout=10) as ws:
+            async with websockets.connect(url, open_timeout=5) as ws:
                 log_step("AIS_Client", "connected", f"Connected to AISStream.io, monitoring {len(all_bounds)} zones")
                 retry_delay = 1
 
