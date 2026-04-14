@@ -1,0 +1,21 @@
+{
+    "model": "claude-opus-4-6",
+    "effortLevel": "high",
+    "env": {
+      "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1"
+    },
+    "permissions": {
+      "defaultMode": "bypassPermissions",
+      "ask": [
+        "Bash(*git push*)",
+        "Bash(*git commit*)",
+        "Bash(*&& git push*)",
+        "Bash(*&& git commit*)",
+        "Bash(*rm *)",
+        "Bash(*rm -r *)",
+        "Bash(*rm -rf *)",
+        "Bash(*rm -f *)"
+      ]
+    }
+  }
+  

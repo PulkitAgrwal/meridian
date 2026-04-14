@@ -1,0 +1,53 @@
+{
+  "asia-europe": {
+    "name": "Asia → Europe (Malacca / Suez)",
+    "description": "Main artery for Asia-Europe container trade. Passes through Malacca Strait, Indian Ocean, and Suez Canal.",
+    "risk_factors": ["Malacca Strait bottleneck", "Suez Canal capacity", "Monsoon season", "Piracy (Gulf of Aden)"],
+    "annual_volume_teu": 24000000,
+    "waypoints": [
+      {"id": "CNSHA", "name": "Shanghai", "lat": 31.23, "lng": 121.47, "type": "origin"},
+      {"id": "CNNGB", "name": "Ningbo", "lat": 29.87, "lng": 121.55, "type": "origin"},
+      {"id": "HKHKG", "name": "Hong Kong", "lat": 22.29, "lng": 114.15, "type": "hub"},
+      {"id": "SGSIN", "name": "Singapore", "lat": 1.26, "lng": 103.82, "type": "critical_chokepoint"},
+      {"id": "LKCMB", "name": "Colombo", "lat": 6.93, "lng": 79.84, "type": "transshipment"},
+      {"id": "AEJEA", "name": "Jebel Ali", "lat": 25.01, "lng": 55.06, "type": "hub"},
+      {"id": "EGPSD", "name": "Port Said (Suez)", "lat": 31.26, "lng": 32.30, "type": "critical_chokepoint"},
+      {"id": "NLRTM", "name": "Rotterdam", "lat": 51.90, "lng": 4.50, "type": "destination"},
+      {"id": "DEHAM", "name": "Hamburg", "lat": 53.55, "lng": 9.97, "type": "destination"}
+    ],
+    "bypass_routes": [
+      {"name": "Lombok Strait", "lat": -8.40, "lng": 115.70, "extra_hours": 18, "extra_cost_usd": 12000},
+      {"name": "Sunda Strait", "lat": -6.10, "lng": 105.80, "extra_hours": 24, "extra_cost_usd": 8000},
+      {"name": "Cape of Good Hope", "lat": -34.35, "lng": 18.47, "extra_hours": 168, "extra_cost_usd": 85000}
+    ]
+  },
+  "us-india": {
+    "name": "US → India (Atlantic / Suez)",
+    "description": "US East Coast to Indian subcontinent via Atlantic and Suez Canal.",
+    "risk_factors": ["Suez Canal dependency", "Mediterranean weather", "Red Sea security"],
+    "annual_volume_teu": 3500000,
+    "waypoints": [
+      {"id": "USNYC", "name": "New York", "lat": 40.68, "lng": -74.04, "type": "origin"},
+      {"id": "EGPSD", "name": "Port Said (Suez)", "lat": 31.26, "lng": 32.30, "type": "critical_chokepoint"},
+      {"id": "AEJEA", "name": "Jebel Ali", "lat": 25.01, "lng": 55.06, "type": "hub"},
+      {"id": "INJNP", "name": "JNPT Mumbai", "lat": 18.95, "lng": 72.95, "type": "destination"},
+      {"id": "INCHE", "name": "Chennai", "lat": 13.10, "lng": 80.29, "type": "destination"}
+    ],
+    "bypass_routes": [
+      {"name": "Cape of Good Hope", "lat": -34.35, "lng": 18.47, "extra_hours": 192, "extra_cost_usd": 95000}
+    ]
+  },
+  "intra-india": {
+    "name": "Intra-India Coastal",
+    "description": "Domestic coastal shipping between major Indian ports.",
+    "risk_factors": ["Monsoon disruptions", "Port infrastructure", "Cyclone Bay of Bengal"],
+    "annual_volume_teu": 800000,
+    "waypoints": [
+      {"id": "INJNP", "name": "JNPT Mumbai", "lat": 18.95, "lng": 72.95, "type": "hub"},
+      {"id": "INMUN", "name": "Mundra", "lat": 22.74, "lng": 69.72, "type": "hub"},
+      {"id": "INCHE", "name": "Chennai", "lat": 13.10, "lng": 80.29, "type": "hub"},
+      {"id": "INVIZ", "name": "Vizag", "lat": 17.69, "lng": 83.22, "type": "secondary"}
+    ],
+    "bypass_routes": []
+  }
+}

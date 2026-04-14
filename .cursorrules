@@ -1,0 +1,48 @@
+You are working on ChainSight, a multi-agent supply chain disruption prediction system for the Google Solution Challenge 2026 India hackathon.
+
+Read CLAUDE.md in the project root for full architecture, conventions, and context.
+
+## Critical Rules
+
+### Google ADK Agents
+- Import: `from google.adk.agents import Agent` (NOT LlmAgent for basic agents)
+- Model: `gemini-2.5-flash` for specialist agents, `gemini-2.5-pro` for orchestrator
+- Remote agents: `from google.adk.agents.remote_a2a_agent import RemoteA2aAgent`
+- A2A server: `from google.adk.a2a.utils.agent_to_a2a import to_a2a`
+- SDK: Use `google-genai` (NOT `google.generativeai` — that's the old SDK)
+
+### Tool Functions
+- MUST have Google-style docstrings with `Args:` and `Returns:` sections — ADK parses these to generate the function calling schema for Gemini
+- MUST return `dict` (not Pydantic models — ADK can't serialize them)
+- MUST call `log_step()` from `shared/reasoning_log.py` for every significant action
+- Type hints on all parameters are required
+
+### Reasoning Transparency
+Every agent action must be logged:
+```python
+from shared.reasoning_log import log_step
+log_step("AgentName", "step_type", "Human-readable description", {"key": "value"})
+```
+This is NOT optional — the reasoning trace is the #1 demo differentiator.
+
+### Configuration
+- All config from `.env` via `shared/config.py` — never hardcode API keys or ports
+- Agent ports: Sentinel=8081, Analyst=8082, Optimizer=8083, Communicator=8084, Orchestrator=8080
+
+### Frontend
+- React + Next.js 14+ with App Router, TypeScript, Tailwind CSS
+- Dark theme: bg-gray-950/900, text-gray-100/300
+- Agent colors: Sentinel=#3B8BD4, Analyst=#7F77DD, Optimizer=#1D9E75, Communicator=#D85A30
+- Risk severity: LOW=#3B8BD4, MODERATE=#EF9F27, HIGH/CRITICAL=#E24B4A
+- Font: JetBrains Mono for technical/agent data, system sans for UI
+- Google Maps via @react-google-maps/api
+- Firebase Firestore for real-time listeners (onSnapshot)
+
+### Data Models
+Use Pydantic models from `shared/models.py` for internal logic. Convert to dict before returning from tool functions.
+
+### Deployment
+- Each agent = 1 Cloud Run container
+- Frontend = Firebase Hosting
+- Use `GOOGLE_GENAI_USE_VERTEXAI=True` in production
+- Cloud Run must read PORT from env var

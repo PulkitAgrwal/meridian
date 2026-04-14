@@ -1,0 +1,103 @@
+services:
+  sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile.sentinel
+    ports:
+      - "8081:8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/agent.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  analyst:
+    build:
+      context: .
+      dockerfile: Dockerfile.analyst
+    ports:
+      - "8082:8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/agent.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  optimizer:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimizer
+    ports:
+      - "8083:8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/agent.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  communicator:
+    build:
+      context: .
+      dockerfile: Dockerfile.communicator
+    ports:
+      - "8084:8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/agent.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      - PORT=8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - SENTINEL_URL=http://sentinel:8080
+      - ANALYST_URL=http://analyst:8080
+      - OPTIMIZER_URL=http://optimizer:8080
+      - COMMUNICATOR_URL=http://communicator:8080
+    depends_on:
+      sentinel:
+        condition: service_healthy
+      analyst:
+        condition: service_healthy
+      optimizer:
+        condition: service_healthy
+      communicator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

@@ -1,0 +1,48 @@
+# Secrets & Environment
+.env
+.env.local
+.env.production
+frontend/.env.production
+config/firebase-service-account.json
+.deploy_orch_url
+sa-key.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Playwright artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/screenshots/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ADK local data
+agents/*/.adk/
+
+# Temp files
+*.log
+check_models.py
+
+# Firebase build cache
+.firebase/
+.firebaserc

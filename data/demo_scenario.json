@@ -1,0 +1,107 @@
+{
+  "scenario_id": "typhoon_gaemi_2026",
+  "scenario_name": "Typhoon Gaemi — Malacca Strait Disruption",
+  "description": "Category 3 typhoon approaching Malacca Strait, causing vessel clustering at Singapore and threatening 72-hour corridor closure. Demonstrates full agent pipeline from detection to resolution.",
+  "demo_duration_seconds": 20,
+  "triggers": [
+    {
+      "timestamp_offset_ms": 0,
+      "agent": "sentinel",
+      "type": "vessel_congestion",
+      "data": {
+        "port_id": "SGSIN",
+        "port_name": "Singapore",
+        "vessels_detected": 47,
+        "baseline": 12,
+        "congestion_index": 3.92,
+        "category": "LONG_TAIL"
+      }
+    },
+    {
+      "timestamp_offset_ms": 1200,
+      "agent": "sentinel",
+      "type": "weather_alert",
+      "data": {
+        "alert_type": "TROPICAL_STORM_WARNING",
+        "name": "Typhoon Gaemi",
+        "severity_score": 0.88,
+        "lat": 2.10,
+        "lng": 104.50,
+        "radius_km": 300,
+        "forecast_window_hrs": 72,
+        "description": "Category 3 typhoon with sustained winds of 185 km/h"
+      }
+    },
+    {
+      "timestamp_offset_ms": 2000,
+      "agent": "sentinel",
+      "type": "news_headline",
+      "data": {
+        "title": "Typhoon Gaemi approaching Southeast Asian shipping lanes",
+        "source": "Reuters",
+        "severity_estimate": 0.85,
+        "location_entities": ["Malacca Strait", "Singapore", "Southeast Asia"]
+      }
+    }
+  ],
+  "expected_disruption_event": {
+    "event_id": "evt_7f3a",
+    "title": "Typhoon Gaemi — Malacca Strait",
+    "severity_score": 0.92,
+    "confidence": 0.89,
+    "disrupted_port": "SGSIN",
+    "estimated_closure_hrs": 72,
+    "affected_corridors": ["asia-europe"]
+  },
+  "expected_cascade": [
+    {"port_id": "SGSIN", "port_name": "Singapore", "delay_days": 2, "congestion": "LONG_TAIL", "vessels": 47},
+    {"port_id": "LKCMB", "port_name": "Colombo", "delay_days": 3, "congestion": "HIGH", "vessels": 18},
+    {"port_id": "INJNP", "port_name": "JNPT Mumbai", "delay_days": 4, "congestion": "HIGH", "vessels": 21},
+    {"port_id": "INCHE", "port_name": "Chennai", "delay_days": 3.5, "congestion": "MEDIUM", "vessels": 12},
+    {"port_id": "EGPSD", "port_name": "Port Said (Suez)", "delay_days": 5, "congestion": "MEDIUM", "vessels": 15}
+  ],
+  "expected_alternatives": [
+    {
+      "id": "lombok",
+      "name": "Lombok Strait bypass",
+      "time_delta_hrs": 18,
+      "cost_delta_usd": 12000,
+      "risk_score": 0.25,
+      "recommended": true,
+      "waypoints": [
+        {"name": "Lombok Strait", "lat": -8.40, "lng": 115.70},
+        {"name": "Java Sea", "lat": -5.50, "lng": 110.00},
+        {"name": "Indian Ocean", "lat": -3.00, "lng": 85.00}
+      ]
+    },
+    {
+      "id": "hold",
+      "name": "Hold at anchorage",
+      "time_delta_hrs": 72,
+      "cost_delta_usd": 0,
+      "risk_score": 0.15,
+      "recommended": false,
+      "waypoints": []
+    },
+    {
+      "id": "sunda",
+      "name": "Sunda Strait bypass",
+      "time_delta_hrs": 24,
+      "cost_delta_usd": 8000,
+      "risk_score": 0.45,
+      "recommended": false,
+      "waypoints": [
+        {"name": "Sunda Strait", "lat": -6.10, "lng": 105.80},
+        {"name": "Indian Ocean", "lat": -3.00, "lng": 100.00}
+      ]
+    }
+  ],
+  "humanitarian_framing": {
+    "context": "During the 2024 Dana cyclone in Tamil Nadu, critical medical supplies were stranded at Chennai port for 6 days. ChainSight's agents would have detected the disruption 48 hours before landfall and rerouted supplies through Vizag — potentially saving lives.",
+    "impact_metrics": {
+      "medicine_shipments_at_risk": 34,
+      "estimated_population_affected": 2400000,
+      "potential_hours_saved": 48
+    }
+  }
+}

@@ -1,0 +1,24 @@
+# Node frontend (deployed separately via Firebase)
+frontend/
+node_modules/
+.next/
+
+# Python cache
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Git
+.git/
+
+# IDE
+.vscode/
+.idea/
+
+# E2E screenshots
+e2e/
+
+# Misc
+*.md
+.env.local
