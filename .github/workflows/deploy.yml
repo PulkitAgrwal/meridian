@@ -197,10 +197,12 @@ jobs:
         env:
           ORCHESTRATOR_URL: ${{ needs.deploy-orchestrator.outputs.orchestrator_url }}
         run: |
-          cat > frontend/.env.production <<EOF
+          cat > frontend/.env.production << 'ENVEOF'
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
-          NEXT_PUBLIC_ORCHESTRATOR_URL=${ORCHESTRATOR_URL}
-          EOF
+          ENVEOF
+          echo "NEXT_PUBLIC_ORCHESTRATOR_URL=${ORCHESTRATOR_URL}" >> frontend/.env.production
+          sed -i 's/^[[:space:]]*//' frontend/.env.production
+          cat frontend/.env.production
           echo "Frontend will connect to: ${ORCHESTRATOR_URL}"
 
       - name: Install and build frontend
@@ -210,12 +212,11 @@ jobs:
           npm run build
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
-          channelId: live
-          projectId: ${{ env.PROJECT_ID }}
+        run: |
+          npm install -g firebase-tools
+          firebase deploy --only hosting --project $PROJECT_ID
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
 
       - id: urls
         run: echo "hosting_url=https://${PROJECT_ID}.web.app" >> "$GITHUB_OUTPUT"
